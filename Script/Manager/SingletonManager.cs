@@ -7,7 +7,8 @@ public abstract class SingletonManager<T> : MonoBehaviour where T : MonoBehaviou
 {
     protected virtual void Awake()
     {
-        T[] managers = FindObjectsByType<T>(FindObjectsSortMode.None);
+        // Use the non-deprecated overload and include inactive objects
+        T[] managers = FindObjectsByType<T>(FindObjectsInactive.Include);
         if (managers.Length > 1)
         {
             Destroy(gameObject);

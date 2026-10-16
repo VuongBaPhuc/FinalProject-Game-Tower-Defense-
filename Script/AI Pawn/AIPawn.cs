@@ -26,4 +26,9 @@ public class AIPawn : MonoBehaviour
         }    
         
     }
+    // Allow external callers to set the current navigation destination
+    public void SetDestination(Vector3 destination)
+    {
+        m_Destination = destination;
+    }
 }
