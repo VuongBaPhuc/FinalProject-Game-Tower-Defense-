@@ -48,5 +48,10 @@ public class GameManager : SingletonManager<GameManager>
         unit = null;
         return false;
     }
+    // Temporary compatibility method called by Unit.Awake
+    // Implement real initialization logic here if needed
+    public void Test()
+    {
+    }
 }
 
