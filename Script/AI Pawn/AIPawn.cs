@@ -14,12 +14,12 @@ public class AIPawn : MonoBehaviour
     {
         if (m_Destination.HasValue)
         {
-            var dir = m_Destination.Value - transform.position;
-            transform.position += dir.normalized * Time.deltaTime * m_Speed;
+            transform.position = Vector3.MoveTowards(
+                transform.position,
+                m_Destination.Value,
+                m_Speed * Time.deltaTime);
 
-            var distanceToDestination = Vector3.Distance(transform.position, m_Destination.Value);
-            
-            if (distanceToDestination < 0.1f)
+            if (transform.position == m_Destination.Value)
             {
                 m_Destination = null;
             }    

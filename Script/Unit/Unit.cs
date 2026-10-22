@@ -4,6 +4,7 @@ using UnityEngine;
 
 public abstract class Unit : MonoBehaviour
 {
+    [SerializeField] private AIPawn m_AiPawn;
     public bool IsMoving;
 
     protected Animator m_Animator;
@@ -15,7 +16,16 @@ public abstract class Unit : MonoBehaviour
             m_Animator = animator;
         }
 
-        var manager = GameManager.Get();
-        manager.Test();
+        if (m_AiPawn == null)
+        {
+            m_AiPawn = GetComponent<AIPawn>();
+        }
+    }
+    public void MoveTo(Vector3 destination)
+    {
+        if (m_AiPawn != null)
+        {
+            m_AiPawn.SetDestination(destination);
+        }
     }
 }
