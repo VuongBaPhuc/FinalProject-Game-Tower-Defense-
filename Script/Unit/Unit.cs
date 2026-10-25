@@ -1,11 +1,15 @@
 
 
+using System.Collections.Generic;
 using UnityEngine;
 
 public abstract class Unit : MonoBehaviour
 {
     [SerializeField] private AIPawn m_AiPawn;
+    [SerializeField] private List<UnitActionSO> m_Actions = new();
     public bool IsMoving;
+
+    public IReadOnlyList<UnitActionSO> Actions => m_Actions;
 
     protected Animator m_Animator;
 

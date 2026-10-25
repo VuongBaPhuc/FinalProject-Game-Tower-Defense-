@@ -1,28 +1,60 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 public class GameManager : SingletonManager<GameManager>
 {
     public Unit ActiveUnit;
     [SerializeField] private PointToClick m_PointToClickPrefab;
+    [SerializeField] private ActionBar m_ActionBar;
     private Vector2 m_InitialTouchPosition;
     private PointToClick m_CurrentPointToClick;
+    private bool m_IsTrackingClick;
+
+    private void Start()
+    {
+        if (m_ActionBar != null)
+        {
+            m_ActionBar.Show(null);
+        }
+    }
+
     void Update()
     {
-        Vector2 inputPosition = Input.touchCount > 0 ? Input.GetTouch(0).position : Input.mousePosition;
+        bool hasTouch = Input.touchCount > 0;
+        Touch touch = hasTouch ? Input.GetTouch(0) : default;
+        Vector2 inputPosition = hasTouch ? touch.position : Input.mousePosition;
+        bool pointerDown = hasTouch
+            ? touch.phase == TouchPhase.Began
+            : Input.GetMouseButtonDown(0);
+        bool pointerUp = hasTouch
+            ? touch.phase == TouchPhase.Ended
+            : Input.GetMouseButtonUp(0);
 
-        if (Input.GetMouseButtonDown(0) || (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began))
+        if (pointerDown)
         {
-            m_InitialTouchPosition = inputPosition;
+            m_IsTrackingClick = !IsPointerOverUI(hasTouch ? touch.fingerId : -1);
+            if (m_IsTrackingClick)
+            {
+                m_InitialTouchPosition = inputPosition;
+            }
         }
 
-        if (Input.GetMouseButtonUp(0) || (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Ended))
+        if (pointerUp && m_IsTrackingClick)
         {
+            m_IsTrackingClick = false;
             if (Vector2.Distance(m_InitialTouchPosition, inputPosition) < 10)
             {
                 DetectClick(inputPosition);
-            } 
-        }    
+            }
+        }
     }
+
+    private bool IsPointerOverUI(int pointerId)
+    {
+        return EventSystem.current != null &&
+            EventSystem.current.IsPointerOverGameObject(pointerId);
+    }
+
     void DetectClick(Vector2 inputPosition)
     {
         if (Camera.main == null)
@@ -36,6 +68,10 @@ public class GameManager : SingletonManager<GameManager>
         if (HasClickedOnUnit(colliders, out var unit))
         {
             ActiveUnit = unit;
+            if (m_ActionBar != null)
+            {
+                m_ActionBar.Show(ActiveUnit);
+            }
         }
         else if (ActiveUnit != null)
         {
@@ -87,6 +123,6 @@ public class GameManager : SingletonManager<GameManager>
     // Implement real initialization logic here if needed
     public void Test()
     {
+        Debug.Log("GameManager Test method called.");
     }
 }
-
