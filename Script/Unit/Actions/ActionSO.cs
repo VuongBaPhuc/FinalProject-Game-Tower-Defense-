@@ -17,7 +17,7 @@ public class UnitActionSO : ScriptableObject
     public string DisplayName => m_DisplayName;
     public Sprite Icon => m_Icon;
 
-    public void Execute(Unit unit)
+    public virtual void Execute(Unit unit)
     {
         if (unit == null)
         {

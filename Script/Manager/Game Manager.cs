@@ -1,17 +1,30 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
 
+[RequireComponent(typeof(BuildingProcess))]
 public class GameManager : SingletonManager<GameManager>
 {
     public Unit ActiveUnit;
     [SerializeField] private PointToClick m_PointToClickPrefab;
     [SerializeField] private ActionBar m_ActionBar;
+    [SerializeField] private BuildingProcess m_BuildingProcess;
     private Vector2 m_InitialTouchPosition;
     private PointToClick m_CurrentPointToClick;
     private bool m_IsTrackingClick;
+    private Unit m_BuildingUnit;
+    private BuildActionSO m_PendingBuildAction;
 
     private void Start()
     {
+        if (m_BuildingProcess == null)
+        {
+            m_BuildingProcess = GetComponent<BuildingProcess>();
+            if (m_BuildingProcess == null)
+            {
+                m_BuildingProcess = gameObject.AddComponent<BuildingProcess>();
+            }
+        }
+
         if (m_ActionBar != null)
         {
             m_ActionBar.Show(null);
@@ -65,6 +78,33 @@ public class GameManager : SingletonManager<GameManager>
         Vector2 worldPoint = Camera.main.ScreenToWorldPoint(inputPosition);
         Collider2D[] colliders = Physics2D.OverlapPointAll(worldPoint);
 
+        if (m_PendingBuildAction != null)
+        {
+            if (HasClickedOnUnit(colliders, out var clickedUnit))
+            {
+                CancelBuildPlacement();
+                ActiveUnit = clickedUnit;
+                m_ActionBar?.Show(ActiveUnit);
+                return;
+            }
+
+            Unit builder = m_BuildingUnit;
+            BuildActionSO action = m_PendingBuildAction;
+            CancelBuildPlacement();
+
+            if (m_BuildingProcess == null)
+            {
+                Debug.LogError("GameManager requires a BuildingProcess component.", this);
+                return;
+            }
+
+            m_BuildingProcess.BuildAt(
+                builder,
+                action,
+                new Vector3(worldPoint.x, worldPoint.y, 0f));
+            return;
+        }
+
         if (HasClickedOnUnit(colliders, out var unit))
         {
             ActiveUnit = unit;
@@ -78,6 +118,31 @@ public class GameManager : SingletonManager<GameManager>
             ActiveUnit.MoveTo(worldPoint);
             ShowPointToClick(worldPoint);
         }
+    }
+
+    public void BeginBuildPlacement(Unit builder, BuildActionSO action)
+    {
+        if (builder == null || action == null)
+        {
+            Debug.LogError("Cannot enter build placement without a builder and build action.", this);
+            return;
+        }
+
+        if (!builder.CanMove)
+        {
+            Debug.LogError($"Builder '{builder.name}' has no AIPawn component.", builder);
+            return;
+        }
+
+        m_BuildingUnit = builder;
+        m_PendingBuildAction = action;
+        Debug.Log($"Click a location to build '{action.DisplayName}'.", builder);
+    }
+
+    private void CancelBuildPlacement()
+    {
+        m_BuildingUnit = null;
+        m_PendingBuildAction = null;
     }
 
     private void ShowPointToClick(Vector2 worldPoint)
