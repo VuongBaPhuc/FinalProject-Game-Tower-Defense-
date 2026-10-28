@@ -31,4 +31,9 @@ public class AIPawn : MonoBehaviour
     {
         m_Destination = destination;
     }
+
+    public void StopMoving()
+    {
+        m_Destination = null;
+    }
 }
