@@ -8,8 +8,55 @@ public class HumanoidUnit : Unit
     private bool m_HasAttack1Parameter;
     private bool m_HasAttack2Parameter;
     private SpriteRenderer m_SpriteRenderer;
+    private bool m_AutoAttackEnabled;
+    private float m_DetectionRadius;
+    private float m_AttackRadius;
+    private float m_AttackDamage;
+    private float m_AttackInterval;
+    private float m_NextAttackTime;
+    private string m_AttackTrigger;
+    private AIPawn m_AutoAttackPawn;
+    private Unit m_Target;
 
     public float CurrentSpeed => m_Velocity.magnitude;
+
+    public void EnableAutoAttack(
+        float detectionRadius,
+        float attackRadius,
+        float damage,
+        float attackInterval,
+        string attackTrigger)
+    {
+        if (!CanMove)
+        {
+            Debug.LogError($"Unit '{name}' needs an AIPawn to use automatic attack.", this);
+            return;
+        }
+
+        if (detectionRadius <= 0f || attackRadius <= 0f ||
+            damage <= 0f || attackInterval <= 0f)
+        {
+            Debug.LogError("Auto-attack radii, damage, and interval must be greater than zero.", this);
+            return;
+        }
+
+        m_DetectionRadius = detectionRadius;
+        m_AttackRadius = Mathf.Min(attackRadius, detectionRadius);
+        m_AttackDamage = damage;
+        m_AttackInterval = attackInterval;
+        m_AttackTrigger = attackTrigger;
+        m_NextAttackTime = 0f;
+        m_Target = null;
+        m_AutoAttackPawn = GetComponent<AIPawn>();
+        m_AutoAttackEnabled = true;
+    }
+
+    public void CancelAutoAttack()
+    {
+        m_AutoAttackEnabled = false;
+        m_Target = null;
+        m_AutoAttackPawn?.StopMoving();
+    }
 
     void Start()
     {
@@ -36,8 +83,10 @@ public class HumanoidUnit : Unit
         }
     }    
 
-    protected void Update()
+    protected virtual void Update()
     {
+        UpdateAutoAttack();
+
         m_Velocity = new Vector2(
             (transform.position.x - m_LastPosition.x),
             (transform.position.y - m_LastPosition.y)
@@ -57,6 +106,83 @@ public class HumanoidUnit : Unit
         }
     }
 
+    private void UpdateAutoAttack()
+    {
+        if (!m_AutoAttackEnabled || Team != UnitTeam.Player || m_AutoAttackPawn == null)
+        {
+            return;
+        }
+
+        if (m_Target == null ||
+            m_Target.Team == Team ||
+            Vector2.Distance(transform.position, m_Target.transform.position) > m_DetectionRadius)
+        {
+            m_Target = FindTarget();
+        }
+
+        if (m_Target == null)
+        {
+            m_AutoAttackPawn.StopMoving();
+            return;
+        }
+
+        float distance = Vector2.Distance(transform.position, m_Target.transform.position);
+        if (distance <= m_AttackRadius)
+        {
+            m_AutoAttackPawn.StopMoving();
+            if (Time.time >= m_NextAttackTime)
+            {
+                m_Target.TakeDamage(m_AttackDamage);
+                PlayAnimationTrigger(m_AttackTrigger);
+                m_NextAttackTime = Time.time + m_AttackInterval;
+            }
+
+            return;
+        }
+
+        Vector2 direction = (m_Target.transform.position - transform.position).normalized;
+        Vector3 stopPosition =
+            m_Target.transform.position - (Vector3)(direction * m_AttackRadius * 0.9f);
+        MoveTo(stopPosition);
+    }
+
+    private Unit FindTarget()
+    {
+        Unit nearestTarget = null;
+        float nearestDistance = m_DetectionRadius;
+
+        foreach (Collider2D hit in Physics2D.OverlapCircleAll(transform.position, m_DetectionRadius))
+        {
+            Unit candidate = hit.GetComponentInParent<Unit>();
+            if (candidate == null || candidate == this || candidate.Team == Team)
+            {
+                continue;
+            }
+
+            float distance = Vector2.Distance(transform.position, candidate.transform.position);
+            if (distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearestTarget = candidate;
+            }
+        }
+
+        return nearestTarget;
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        if (!m_AutoAttackEnabled)
+        {
+            return;
+        }
+
+        Gizmos.color = Color.blue;
+        Gizmos.DrawWireSphere(transform.position, m_DetectionRadius);
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, m_AttackRadius);
+    }
+
     public void Attack1()
     {
         if (m_HasAttack1Parameter)
@@ -73,4 +199,3 @@ public class HumanoidUnit : Unit
         }
     }
 }
-

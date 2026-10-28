@@ -107,16 +107,56 @@ public class GameManager : SingletonManager<GameManager>
 
         if (HasClickedOnUnit(colliders, out var unit))
         {
+            CancelActiveGathering();
             ActiveUnit = unit;
             if (m_ActionBar != null)
             {
                 m_ActionBar.Show(ActiveUnit);
             }
         }
+        else if (ActiveUnit is WorkerUnit worker &&
+                 TryFindResourceNode(colliders, out var resourceNode))
+        {
+            worker.StartGathering(resourceNode);
+        }
         else if (ActiveUnit != null)
         {
+            if (ActiveUnit is HumanoidUnit humanoid)
+            {
+                humanoid.CancelAutoAttack();
+            }
+
+            CancelActiveGathering();
             ActiveUnit.MoveTo(worldPoint);
             ShowPointToClick(worldPoint);
+        }
+    }
+
+    private bool TryFindResourceNode(Collider2D[] colliders, out TreeResourceNode resourceNode)
+    {
+        foreach (Collider2D collider in colliders)
+        {
+            resourceNode = collider.GetComponent<TreeResourceNode>();
+            if (resourceNode == null)
+            {
+                resourceNode = collider.GetComponentInParent<TreeResourceNode>();
+            }
+
+            if (resourceNode != null)
+            {
+                return true;
+            }
+        }
+
+        resourceNode = null;
+        return false;
+    }
+
+    private void CancelActiveGathering()
+    {
+        if (ActiveUnit is WorkerUnit worker)
+        {
+            worker.CancelGathering();
         }
     }
 
@@ -183,11 +223,5 @@ public class GameManager : SingletonManager<GameManager>
 
         unit = null;
         return false;
-    }
-    // Temporary compatibility method called by Unit.Awake
-    // Implement real initialization logic here if needed
-    public void Test()
-    {
-        Debug.Log("GameManager Test method called.");
     }
 }
