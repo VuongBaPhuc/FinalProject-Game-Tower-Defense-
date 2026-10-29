@@ -62,38 +62,12 @@ public abstract class Unit : MonoBehaviour
         }
 
         CurrentHealth = Mathf.Max(0f, CurrentHealth - damage);
-        ShowDamageNumber(damage);
+        DamageNumberPopup.Show(transform, damage);
 
         if (CurrentHealth == 0f)
         {
             Destroy(gameObject);
         }
-    }
-
-    private void ShowDamageNumber(float damage)
-    {
-        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        if (font == null)
-        {
-            Debug.LogError("Could not load Unity's built-in LegacyRuntime.ttf font.", this);
-            return;
-        }
-
-        GameObject popup = new("DamageNumber");
-        popup.transform.position = transform.position + Vector3.up * 1.5f;
-
-        TextMesh textMesh = popup.AddComponent<TextMesh>();
-        textMesh.font = font;
-        textMesh.text = $"-{damage:0.#}";
-        textMesh.anchor = TextAnchor.MiddleCenter;
-        textMesh.alignment = TextAlignment.Center;
-        textMesh.fontSize = 48;
-        textMesh.characterSize = 0.1f;
-        textMesh.fontStyle = FontStyle.Bold;
-        textMesh.color = new Color(1f, 0.2f, 0.2f, 1f);
-
-        popup.GetComponent<MeshRenderer>().sortingOrder = 100;
-        Destroy(popup, 0.8f);
     }
 
     public void PlayAnimationTrigger(string triggerName)

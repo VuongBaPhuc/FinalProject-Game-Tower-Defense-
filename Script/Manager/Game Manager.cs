@@ -105,7 +105,12 @@ public class GameManager : SingletonManager<GameManager>
             return;
         }
 
-        if (HasClickedOnUnit(colliders, out var unit))
+        if (ActiveUnit is WorkerUnit activeWorker &&
+            TryFindSheepResource(colliders, out var sheep))
+        {
+            activeWorker.StartGathering(sheep);
+        }
+        else if (HasClickedOnUnit(colliders, out var unit))
         {
             CancelActiveGathering();
             ActiveUnit = unit;
@@ -149,6 +154,26 @@ public class GameManager : SingletonManager<GameManager>
         }
 
         resourceNode = null;
+        return false;
+    }
+
+    private bool TryFindSheepResource(Collider2D[] colliders, out SheepResourceNode sheep)
+    {
+        foreach (Collider2D collider in colliders)
+        {
+            sheep = collider.GetComponent<SheepResourceNode>();
+            if (sheep == null)
+            {
+                sheep = collider.GetComponentInParent<SheepResourceNode>();
+            }
+
+            if (sheep != null)
+            {
+                return true;
+            }
+        }
+
+        sheep = null;
         return false;
     }
 

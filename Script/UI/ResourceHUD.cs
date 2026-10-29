@@ -6,10 +6,14 @@ public class ResourceHUD : MonoBehaviour
 {
     [SerializeField] private Image m_WoodIcon;
     [SerializeField] private Text m_WoodCount;
+    [SerializeField] private Sprite m_FoodIconSprite;
+    [SerializeField] private Image m_FoodIcon;
+    [SerializeField] private Text m_FoodCount;
 
     private readonly List<CastleUnit> m_Castles = new();
     private RectTransform m_HudRoot;
     private bool m_IsGeneratedHud;
+    private bool m_IsGeneratedFoodHud;
 
     private void OnEnable()
     {
@@ -23,14 +27,17 @@ public class ResourceHUD : MonoBehaviour
             CreateHud();
         }
 
+        ConfigureFoodHud();
+
         m_Castles.Clear();
         foreach (CastleUnit castle in FindObjectsByType<CastleUnit>())
         {
             castle.WoodChanged += HandleWoodChanged;
+            castle.FoodChanged += HandleResourceChanged;
             m_Castles.Add(castle);
         }
 
-        RefreshWoodCount();
+        RefreshResourceCounts();
     }
 
     private void OnDisable()
@@ -40,16 +47,36 @@ public class ResourceHUD : MonoBehaviour
             if (castle != null)
             {
                 castle.WoodChanged -= HandleWoodChanged;
+                castle.FoodChanged -= HandleResourceChanged;
             }
         }
 
         m_Castles.Clear();
+        if (m_IsGeneratedFoodHud)
+        {
+            if (m_FoodIcon != null)
+            {
+                Destroy(m_FoodIcon.gameObject);
+            }
+
+            if (m_FoodCount != null)
+            {
+                Destroy(m_FoodCount.gameObject);
+            }
+
+            m_FoodIcon = null;
+            m_FoodCount = null;
+            m_IsGeneratedFoodHud = false;
+        }
+
         if (m_IsGeneratedHud && m_HudRoot != null)
         {
             Destroy(m_HudRoot.gameObject);
             m_HudRoot = null;
             m_WoodIcon = null;
             m_WoodCount = null;
+            m_FoodIcon = null;
+            m_FoodCount = null;
             m_IsGeneratedHud = false;
         }
     }
@@ -86,6 +113,64 @@ public class ResourceHUD : MonoBehaviour
         m_WoodCount.raycastTarget = false;
     }
 
+    private void ConfigureFoodHud()
+    {
+        if (m_FoodIcon == null && m_FoodCount == null)
+        {
+            if (m_FoodIconSprite == null)
+            {
+                Debug.LogError("Assign a Food icon Sprite in ResourceHUD.", this);
+                return;
+            }
+
+            if (m_WoodIcon == null || m_WoodCount == null)
+            {
+                Debug.LogError("ResourceHUD needs its Wood Icon and Wood Count before creating the Food row.", this);
+                return;
+            }
+
+            m_FoodIcon = Instantiate(m_WoodIcon, m_WoodIcon.transform.parent);
+            m_FoodIcon.name = "Food";
+            m_FoodIcon.sprite = m_FoodIconSprite;
+            m_FoodIcon.preserveAspect = true;
+            m_FoodIcon.raycastTarget = false;
+            m_FoodIcon.rectTransform.anchoredPosition += new Vector2(125f, 0f);
+
+            m_FoodCount = Instantiate(m_WoodCount, m_WoodCount.transform.parent);
+            m_FoodCount.name = "Food Count";
+            m_FoodCount.text = "0";
+            m_FoodCount.raycastTarget = false;
+            m_FoodCount.rectTransform.anchoredPosition += new Vector2(125f, 0f);
+            m_IsGeneratedFoodHud = true;
+        }
+
+        if (m_FoodIcon == null || m_FoodCount == null)
+        {
+            Debug.LogError(
+                "Assign both the Food Icon Image and Food Count Text, or assign a Food icon Sprite for automatic setup.",
+                this);
+            return;
+        }
+
+        if (m_FoodIcon.sprite == null)
+        {
+            m_FoodIcon.sprite = m_FoodIconSprite;
+        }
+
+        if (m_FoodIcon.sprite == null)
+        {
+            Debug.LogError("The Food Icon Image has no Sprite assigned.", m_FoodIcon);
+        }
+
+        m_FoodIcon.preserveAspect = true;
+        if (m_FoodCount.font == null)
+        {
+            m_FoodCount.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        }
+
+        m_FoodCount.raycastTarget = false;
+    }
+
     private void CreateHud()
     {
         Canvas canvas = GetComponent<Canvas>();
@@ -107,7 +192,7 @@ public class ResourceHUD : MonoBehaviour
         m_HudRoot.anchorMax = Vector2.one;
         m_HudRoot.pivot = Vector2.one;
         m_HudRoot.anchoredPosition = new Vector2(-24f, -24f);
-        m_HudRoot.sizeDelta = new Vector2(150f, 48f);
+        m_HudRoot.sizeDelta = new Vector2(300f, 48f);
 
         GameObject iconObject = new("WoodIcon", typeof(RectTransform), typeof(Image));
         RectTransform iconRect = iconObject.GetComponent<RectTransform>();
@@ -133,10 +218,11 @@ public class ResourceHUD : MonoBehaviour
         GameObject countObject = new("WoodCount", typeof(RectTransform), typeof(Text));
         RectTransform countRect = countObject.GetComponent<RectTransform>();
         countRect.SetParent(m_HudRoot, false);
-        countRect.anchorMin = Vector2.zero;
-        countRect.anchorMax = Vector2.one;
-        countRect.offsetMin = new Vector2(48f, 0f);
-        countRect.offsetMax = Vector2.zero;
+        countRect.anchorMin = new Vector2(0f, 0.5f);
+        countRect.anchorMax = new Vector2(0f, 0.5f);
+        countRect.pivot = new Vector2(0f, 0.5f);
+        countRect.anchoredPosition = new Vector2(48f, 0f);
+        countRect.sizeDelta = new Vector2(102f, 40f);
 
         m_WoodCount = countObject.GetComponent<Text>();
         m_WoodCount.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
@@ -150,25 +236,35 @@ public class ResourceHUD : MonoBehaviour
 
     private void HandleWoodChanged(CastleUnit castle)
     {
-        RefreshWoodCount();
+        RefreshResourceCounts();
     }
 
-    private void RefreshWoodCount()
+    private void HandleResourceChanged(CastleUnit castle)
     {
-        if (m_WoodCount == null)
-        {
-            return;
-        }
+        RefreshResourceCounts();
+    }
 
+    private void RefreshResourceCounts()
+    {
         int totalWood = 0;
+        int totalFood = 0;
         foreach (CastleUnit castle in m_Castles)
         {
             if (castle != null)
             {
                 totalWood += castle.StoredWood;
+                totalFood += castle.StoredFood;
             }
         }
 
-        m_WoodCount.text = totalWood.ToString();
+        if (m_WoodCount != null)
+        {
+            m_WoodCount.text = totalWood.ToString();
+        }
+
+        if (m_FoodCount != null)
+        {
+            m_FoodCount.text = totalFood.ToString();
+        }
     }
 }

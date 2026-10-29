@@ -14,11 +14,22 @@ public class EnemyUnit : HumanoidUnit
 
     private Unit m_Target;
     private float m_NextAttackTime;
+    private WorldHealthBar m_HealthBar;
 
     public override UnitTeam Team => UnitTeam.Enemy;
 
     private void LateUpdate()
     {
+        if (m_HealthBar == null)
+        {
+            m_HealthBar = GetComponent<WorldHealthBar>();
+        }
+
+        if (m_HealthBar != null)
+        {
+            m_HealthBar.SetHealth(CurrentHealth, MaxHealth);
+        }
+
         if (Team != UnitTeam.Enemy)
         {
             return;
