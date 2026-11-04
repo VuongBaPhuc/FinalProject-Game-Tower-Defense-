@@ -3,8 +3,10 @@ using UnityEngine.UI;
 
 public class ActionBar : MonoBehaviour
 {
+    // Container holding the buttons that represent possible unit actions.
     [SerializeField] private Transform m_ActionContainer;
 
+    // Configures buttons to match the selected unit and hides unavailable actions.
     public void Show(Unit unit)
     {
         if (m_ActionContainer == null)
@@ -41,6 +43,7 @@ public class ActionBar : MonoBehaviour
         }
     }
 
+    // Matches an action to a button using the button's display name.
     private UnitActionSO FindActionForButton(Unit unit, Button button)
     {
         if (unit == null)

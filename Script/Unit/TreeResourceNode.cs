@@ -2,19 +2,26 @@ using UnityEngine;
 
 public class TreeResourceNode : MonoBehaviour
 {
+    // Remaining wood that workers can harvest from this tree.
     [SerializeField, Min(1)] private int m_WoodRemaining = 10;
+    // Optional Animator used for the tree's chopping appearance.
     [SerializeField] private Animator m_Animator;
+    // Animator state played while a worker is chopping this tree.
     [SerializeField] private string m_ChoppingAnimationState = "Idle";
 
+    // Indicates whether this tree can still provide wood.
     public bool HasResources => m_WoodRemaining > 0;
     public int WoodRemaining => m_WoodRemaining;
 
+    // Worker currently interacting with this tree.
     private WorkerUnit m_ChoppingWorker;
+    // Reusable icon shown above the tree while it is being chopped.
     private GameObject m_ChoppingIndicator;
     private SpriteRenderer m_TreeRenderer;
     private Sprite m_DefaultSprite;
     private bool m_ReportedMissingAnimationState;
 
+    // Caches the original sprite and keeps the tree Animator disabled while idle.
     private void Awake()
     {
         m_TreeRenderer = GetComponent<SpriteRenderer>();
@@ -34,6 +41,7 @@ public class TreeResourceNode : MonoBehaviour
         }
     }
 
+    // Shows chopping feedback and animation for the worker using this resource node.
     public void BeginChopping(
         WorkerUnit worker,
         Sprite icon,
@@ -62,6 +70,7 @@ public class TreeResourceNode : MonoBehaviour
         PlayChoppingAnimation();
     }
 
+    // Hides chopping feedback and restores the tree's idle appearance.
     public void EndChopping(WorkerUnit worker)
     {
         if (worker == null || m_ChoppingWorker != worker)
@@ -78,6 +87,7 @@ public class TreeResourceNode : MonoBehaviour
         StopChoppingAnimation();
     }
 
+    // Removes up to the requested amount of wood and destroys the tree when depleted.
     public int Gather(int amount)
     {
         if (amount <= 0)
@@ -102,6 +112,7 @@ public class TreeResourceNode : MonoBehaviour
         return gathered;
     }
 
+    // Creates the indicator once, then updates its appearance and position for reuse.
     private void ShowChoppingIndicator(Sprite icon, Vector3 offset, float scale)
     {
         if (m_ChoppingIndicator == null)
@@ -124,6 +135,7 @@ public class TreeResourceNode : MonoBehaviour
         m_ChoppingIndicator.SetActive(true);
     }
 
+    // Starts the configured Animator state if the controller contains it.
     private void PlayChoppingAnimation()
     {
         if (m_Animator == null || string.IsNullOrWhiteSpace(m_ChoppingAnimationState))
@@ -149,6 +161,7 @@ public class TreeResourceNode : MonoBehaviour
         m_Animator.Play(stateHash, 0, 0f);
     }
 
+    // Stops the tree animation and restores the sprite captured during initialization.
     private void StopChoppingAnimation()
     {
         if (m_Animator != null)

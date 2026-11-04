@@ -3,8 +3,10 @@ using UnityEngine;
 
 public class BuildingProcess : MonoBehaviour
 {
+    // Prevents overlapping build routines from running at the same time.
     private bool m_IsBuilding;
 
+    // Validates the request and starts building after the selected unit reaches the site.
     public void BuildAt(Unit builder, BuildActionSO action, Vector3 position)
     {
         if (builder == null)
@@ -34,6 +36,7 @@ public class BuildingProcess : MonoBehaviour
         StartCoroutine(BuildRoutine(builder, action, position));
     }
 
+    // Moves the builder, spawns the tower, disables its colliders while building, then restores them.
     private IEnumerator BuildRoutine(Unit builder, BuildActionSO action, Vector3 position)
     {
         m_IsBuilding = true;
@@ -64,6 +67,7 @@ public class BuildingProcess : MonoBehaviour
             PlayTowerBuildAnimation(towerAnimator, action.TowerBuildTrigger, tower);
         }
 
+        // Save collider states so the prefab's original enabled settings can be restored.
         Collider2D[] colliders = tower.GetComponentsInChildren<Collider2D>(true);
         bool[] colliderStates = new bool[colliders.Length];
         for (int i = 0; i < colliders.Length; i++)
@@ -86,6 +90,7 @@ public class BuildingProcess : MonoBehaviour
         m_IsBuilding = false;
     }
 
+    // Plays the tower's build animation when the configured Trigger exists.
     private void PlayTowerBuildAnimation(Animator animator, string triggerName, GameObject tower)
     {
         foreach (AnimatorControllerParameter parameter in animator.parameters)

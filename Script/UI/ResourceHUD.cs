@@ -4,17 +4,20 @@ using UnityEngine.UI;
 
 public class ResourceHUD : MonoBehaviour
 {
+    // Wood controls assigned in the Inspector; food controls can also be generated from the wood row.
     [SerializeField] private Image m_WoodIcon;
     [SerializeField] private Text m_WoodCount;
     [SerializeField] private Sprite m_FoodIconSprite;
     [SerializeField] private Image m_FoodIcon;
     [SerializeField] private Text m_FoodCount;
 
+    // Castle subscriptions and dynamically generated UI state.
     private readonly List<CastleUnit> m_Castles = new();
     private RectTransform m_HudRoot;
     private bool m_IsGeneratedHud;
     private bool m_IsGeneratedFoodHud;
 
+    // Builds or configures the HUD, subscribes to castle changes, and displays current totals.
     private void OnEnable()
     {
         bool hasManualHud = m_WoodIcon != null || m_WoodCount != null;
@@ -40,6 +43,7 @@ public class ResourceHUD : MonoBehaviour
         RefreshResourceCounts();
     }
 
+    // Unsubscribes from castles and destroys UI elements created dynamically by this component.
     private void OnDisable()
     {
         foreach (CastleUnit castle in m_Castles)
@@ -81,6 +85,7 @@ public class ResourceHUD : MonoBehaviour
         }
     }
 
+    // Validates and prepares the manually assigned wood icon and count.
     private void ConfigureManualHud()
     {
         if (m_WoodIcon == null || m_WoodCount == null)
@@ -113,6 +118,7 @@ public class ResourceHUD : MonoBehaviour
         m_WoodCount.raycastTarget = false;
     }
 
+    // Uses the assigned food controls or clones the wood controls to create a food row.
     private void ConfigureFoodHud()
     {
         if (m_FoodIcon == null && m_FoodCount == null)
@@ -171,6 +177,7 @@ public class ResourceHUD : MonoBehaviour
         m_FoodCount.raycastTarget = false;
     }
 
+    // Creates a basic wood HUD at the top-right of the parent Canvas.
     private void CreateHud()
     {
         Canvas canvas = GetComponent<Canvas>();
@@ -234,16 +241,19 @@ public class ResourceHUD : MonoBehaviour
         m_IsGeneratedHud = true;
     }
 
+    // Refreshes both displayed resource totals after wood changes.
     private void HandleWoodChanged(CastleUnit castle)
     {
         RefreshResourceCounts();
     }
 
+    // Refreshes both displayed resource totals after food changes.
     private void HandleResourceChanged(CastleUnit castle)
     {
         RefreshResourceCounts();
     }
 
+    // Sums the resources across subscribed castles and updates any available count labels.
     private void RefreshResourceCounts()
     {
         int totalWood = 0;
