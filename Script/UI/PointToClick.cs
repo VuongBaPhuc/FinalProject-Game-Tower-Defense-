@@ -3,6 +3,7 @@ using UnityEngine;
 
 public class PointToClick : MonoBehaviour
 {
+    // Duration, maximum scale, and interpolation shape for the click marker.
     [SerializeField] private float m_Duration = 0.5f;
     [SerializeField] private float m_MaxScale = 1.5f;
     [SerializeField] private AnimationCurve m_ScaleCurve = new AnimationCurve(
@@ -10,11 +11,13 @@ public class PointToClick : MonoBehaviour
         new Keyframe(0.5f, 1f),
         new Keyframe(1f, 0f));
 
+    // Starts the marker's scale animation when it is created.
     private void Start()
     {
         StartCoroutine(PlayScaleAnimation());
     }
 
+    // Scales the marker according to the curve, then removes it when finished.
     private IEnumerator PlayScaleAnimation()
     {
         Vector3 initialScale = transform.localScale;

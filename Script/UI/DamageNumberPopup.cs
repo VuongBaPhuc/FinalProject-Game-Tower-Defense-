@@ -1,7 +1,9 @@
 using UnityEngine;
 
+// Creates short-lived floating text to show damage dealt to a target.
 public static class DamageNumberPopup
 {
+    // Validates the input and spawns a red damage label above the target.
     public static void Show(Transform target, float damage)
     {
         if (target == null)

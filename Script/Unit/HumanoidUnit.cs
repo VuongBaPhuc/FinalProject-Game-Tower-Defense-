@@ -2,6 +2,7 @@ using UnityEngine;
 
 public class HumanoidUnit : Unit
 {
+    // Recent movement data used to update facing and animation speed.
     protected Vector2 m_Velocity;
     protected Vector3 m_LastPosition;
     private bool m_HasSpeedParameter;
@@ -20,6 +21,7 @@ public class HumanoidUnit : Unit
 
     public float CurrentSpeed => m_Velocity.magnitude;
 
+    // Enables automatic opponent detection, pursuit, and timed attacks.
     public void EnableAutoAttack(
         float detectionRadius,
         float attackRadius,
@@ -51,6 +53,7 @@ public class HumanoidUnit : Unit
         m_AutoAttackEnabled = true;
     }
 
+    // Disables automatic combat and cancels any current pursuit movement.
     public void CancelAutoAttack()
     {
         m_AutoAttackEnabled = false;
@@ -58,6 +61,7 @@ public class HumanoidUnit : Unit
         m_AutoAttackPawn?.StopMoving();
     }
 
+    // Caches the initial position, sprite renderer, and supported Animator parameters.
     void Start()
     {
         m_LastPosition = transform.position;
@@ -83,6 +87,7 @@ public class HumanoidUnit : Unit
         }
     }    
 
+    // Updates combat, estimates velocity, faces movement, and synchronizes the speed animation.
     protected virtual void Update()
     {
         UpdateAutoAttack();
@@ -106,6 +111,7 @@ public class HumanoidUnit : Unit
         }
     }
 
+    // Pursues the nearest opponent and attacks when it enters range.
     private void UpdateAutoAttack()
     {
         if (!m_AutoAttackEnabled || Team != UnitTeam.Player || m_AutoAttackPawn == null)
@@ -146,6 +152,7 @@ public class HumanoidUnit : Unit
         MoveTo(stopPosition);
     }
 
+    // Finds the closest opposing unit with a collider inside the detection radius.
     private Unit FindTarget()
     {
         Unit nearestTarget = null;
@@ -170,6 +177,7 @@ public class HumanoidUnit : Unit
         return nearestTarget;
     }
 
+    // Draws automatic attack radii in the Scene view while this unit is selected.
     private void OnDrawGizmosSelected()
     {
         if (!m_AutoAttackEnabled)
@@ -183,6 +191,7 @@ public class HumanoidUnit : Unit
         Gizmos.DrawWireSphere(transform.position, m_AttackRadius);
     }
 
+    // Plays the first attack animation when its Trigger exists on the Animator.
     public void Attack1()
     {
         if (m_HasAttack1Parameter)
@@ -191,6 +200,7 @@ public class HumanoidUnit : Unit
         }
     }
 
+    // Plays the second attack animation when its Trigger exists on the Animator.
     public void Attack2()
     {
         if (m_HasAttack2Parameter)

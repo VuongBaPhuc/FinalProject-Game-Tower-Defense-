@@ -2,19 +2,23 @@ using UnityEngine;
 
 public class WorldHealthBar : MonoBehaviour
 {
+    // World-space size and position of the health bar above its owner.
     [SerializeField, Min(0.1f)] private float m_Width = 0.8f;
     [SerializeField, Min(0.01f)] private float m_Height = 0.08f;
     [SerializeField] private Vector3 m_Offset = new(0f, 0.75f, 0f);
 
+    // Shared generated sprite and per-instance renderer references.
     private static Sprite s_BarSprite;
     private SpriteRenderer m_Fill;
     private SpriteRenderer m_Background;
 
+    // Creates the background and fill renderers when the component is initialized.
     private void Awake()
     {
         CreateBar();
     }
 
+    // Scales and colors the fill based on the current health ratio.
     public void SetHealth(float currentHealth, float maxHealth)
     {
         if (maxHealth <= 0f)
@@ -37,6 +41,7 @@ public class WorldHealthBar : MonoBehaviour
         m_Fill.color = Color.Lerp(Color.red, Color.green, healthRatio);
     }
 
+    // Builds the health bar hierarchy and copies the owner's sprite sorting settings.
     private void CreateBar()
     {
         if (m_Fill != null)
@@ -71,6 +76,7 @@ public class WorldHealthBar : MonoBehaviour
         m_Fill.sortingOrder = m_Background.sortingOrder + 1;
     }
 
+    // Creates one reusable solid sprite for health bar rendering.
     private static Sprite GetBarSprite()
     {
         if (s_BarSprite != null)

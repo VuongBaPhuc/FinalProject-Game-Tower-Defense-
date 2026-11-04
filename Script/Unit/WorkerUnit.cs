@@ -3,19 +3,26 @@ using UnityEngine;
 public class WorkerUnit : HumanoidUnit
 {
     [Header("Gathering")]
+    // Distances used to reach a tree or sheep and to deliver resources to a castle.
     [SerializeField, Min(0.1f)] private float m_GatherRange = 1f;
+    // Time between each wood harvest or sheep damage hit.
     [SerializeField, Min(0.1f)] private float m_ChopDuration = 3f;
+    // Wood gained per completed chopping cycle and total carrying capacity.
     [SerializeField, Min(1)] private int m_WoodPerGather = 1;
     [SerializeField, Min(1)] private int m_CarryCapacity = 5;
     [SerializeField, Min(0.1f)] private float m_CastleDepositRange = 1f;
+    // Damage dealt to a sheep per completed gathering cycle.
     [SerializeField, Min(0.1f)] private float m_FoodDamagePerChop = 25f;
+    // Animation trigger, Sheep clip override, and Animator flags for work/carrying.
     [SerializeField] private string m_GatherTrigger = "Chop";
     [SerializeField] private AnimationClip m_FoodGatherAnimationClip;
     [SerializeField] private string m_IsChoppingParameter = "IsChopping";
     [SerializeField] private string m_IsCarryingParameter = "IsCarrying";
+    // Optional feedback icon displayed above trees while chopping.
     [SerializeField] private Sprite m_ChoppingIcon;
     [SerializeField] private Vector3 m_ChoppingIconOffsetOnTree = new(0f, 1.65f, 0f);
     [SerializeField, Min(0.1f)] private float m_ChoppingIconScale = 1.4f;
+    // Prefab/sprite and offsets used to show resources carried back to the castle.
     [SerializeField] private GameObject m_CarriedWoodPrefab;
     [SerializeField] private Vector3 m_CarriedWoodOffset = new(0.28f, 0.1f, 0f);
     [SerializeField] private Vector3 m_CarriedWoodScale = Vector3.one * 0.65f;
@@ -23,18 +30,22 @@ public class WorkerUnit : HumanoidUnit
     [SerializeField] private Vector3 m_CarriedFoodOffset = new(0.28f, 0.1f, 0f);
     [SerializeField] private Vector3 m_CarriedFoodScale = Vector3.one * 0.65f;
 
+    // Active resource targets, castle destination, and chopping timer.
     private TreeResourceNode m_GatherTarget;
     private SheepResourceNode m_FoodGatherTarget;
     private CastleUnit m_ReturnTarget;
     private float m_NextChopTime;
+    // Amount of each resource currently carried and the current delivery state.
     private int m_CarriedWood;
     private int m_CarriedFood;
     private bool m_IsReturningToCastle;
+    // Flags prevent repeated error logs when required scene or Animator setup is missing.
     private bool m_ReportedMissingCastle;
     private bool m_ReportedMissingGatherTrigger;
     private bool m_ReportedMissingChoppingParameter;
     private bool m_ReportedMissingCarryingParameter;
     private bool m_ReportedMissingWoodPrefab;
+    // Cached visual objects and animation controller override used during gathering.
     private TreeResourceNode m_IconTree;
     private GameObject m_CarriedWoodVisual;
     private SpriteRenderer m_CarriedWoodRenderer;
@@ -45,16 +56,19 @@ public class WorkerUnit : HumanoidUnit
     private AnimatorOverrideController m_FoodGatherAnimatorController;
     private AnimationClip m_ChopAnimationClip;
 
+    // Current carried-resource totals exposed to other systems.
     public int Wood => m_CarriedWood;
     public int CarriedWood => m_CarriedWood;
     public int CarriedFood => m_CarriedFood;
 
+    // Runs shared humanoid logic before advancing the active gathering job.
     protected override void Update()
     {
         base.Update();
         UpdateGathering();
     }
 
+    // Starts a wood-gathering job for a tree and sends the worker to it.
     public void StartGathering(TreeResourceNode resourceNode)
     {
         if (resourceNode == null)
@@ -75,6 +89,7 @@ public class WorkerUnit : HumanoidUnit
             return;
         }
 
+        m_FoodGatherTarget?.SetBeingGathered(false);
         CancelAutoAttack();
         StopChopping();
         SetFoodGatherAnimation(false);
@@ -94,6 +109,7 @@ public class WorkerUnit : HumanoidUnit
         }
     }
 
+    // Starts a food-gathering job for a sheep and selects the food animation.
     public void StartGathering(SheepResourceNode sheep)
     {
         if (sheep == null)
@@ -114,11 +130,13 @@ public class WorkerUnit : HumanoidUnit
             return;
         }
 
+        m_FoodGatherTarget?.SetBeingGathered(false);
         CancelAutoAttack();
         StopChopping();
         SetFoodGatherAnimation(true);
         m_GatherTarget = null;
         m_FoodGatherTarget = sheep;
+        sheep.SetBeingGathered(true);
         m_ReturnTarget = null;
         m_IsReturningToCastle = false;
         m_NextChopTime = 0f;
@@ -134,8 +152,10 @@ public class WorkerUnit : HumanoidUnit
         }
     }
 
+    // Cancels gathering, clears targets, restores the normal Animator, and stops movement.
     public void CancelGathering()
     {
+        m_FoodGatherTarget?.SetBeingGathered(false);
         m_GatherTarget = null;
         m_FoodGatherTarget = null;
         m_ReturnTarget = null;
@@ -146,6 +166,7 @@ public class WorkerUnit : HumanoidUnit
         GetComponent<AIPawn>()?.StopMoving();
     }
 
+    // Chooses whether to harvest wood, harvest food, or deliver carried resources.
     private void UpdateGathering()
     {
         if (m_IsReturningToCastle)
@@ -222,6 +243,7 @@ public class WorkerUnit : HumanoidUnit
         }
     }
 
+    // Approaches a sheep, plays the gathering animation, applies damage, and collects its food.
     private void UpdateFoodGathering()
     {
         if (m_FoodGatherTarget == null)
@@ -288,6 +310,7 @@ public class WorkerUnit : HumanoidUnit
             return;
         }
 
+        sheep.SetBeingGathered(false);
         int foodGathered = Mathf.Min(foodYield, m_CarryCapacity - m_CarriedWood - m_CarriedFood);
         m_CarriedFood += foodGathered;
         m_FoodGatherTarget = null;
@@ -295,8 +318,11 @@ public class WorkerUnit : HumanoidUnit
         StartReturningToCastle();
     }
 
+    // Switches to the carrying state and finds the nearest friendly castle.
     private void StartReturningToCastle()
     {
+        m_FoodGatherTarget?.SetBeingGathered(false);
+        m_FoodGatherTarget = null;
         m_NextChopTime = 0f;
         StopChopping();
         if (m_CarriedWood + m_CarriedFood <= 0)
@@ -325,6 +351,7 @@ public class WorkerUnit : HumanoidUnit
         MoveTo(m_ReturnTarget.transform.position);
     }
 
+    // Moves into deposit range, stores resources, and resumes an unfinished gathering job.
     private void UpdateReturningToCastle()
     {
         if (m_ReturnTarget == null)
@@ -381,6 +408,7 @@ public class WorkerUnit : HumanoidUnit
         MoveTo(nextTarget);
     }
 
+    // Selects the closest castle belonging to the worker's team.
     private CastleUnit FindNearestCastle()
     {
         CastleUnit nearestCastle = null;
@@ -404,6 +432,7 @@ public class WorkerUnit : HumanoidUnit
         return nearestCastle;
     }
 
+    // Sets the chopping state, shows a tree indicator, and triggers the work animation.
     private void StartChopping()
     {
         SetChoppingState(true);
@@ -444,6 +473,7 @@ public class WorkerUnit : HumanoidUnit
         }
     }
 
+    // Overrides the Chop clip with Gather_2 during Sheep work and restores the original controller otherwise.
     private void SetFoodGatherAnimation(bool useFoodAnimation)
     {
         if (m_Animator == null)
@@ -515,6 +545,7 @@ public class WorkerUnit : HumanoidUnit
         m_Animator.runtimeAnimatorController = m_FoodGatherAnimatorController;
     }
 
+    // Ends the chopping state and hides any active tree indicator.
     private void StopChopping()
     {
         SetChoppingState(false);
@@ -525,6 +556,7 @@ public class WorkerUnit : HumanoidUnit
         }
     }
 
+    // Updates the Animator's chopping Bool when that parameter is configured.
     private void SetChoppingState(bool isChopping)
     {
         if (m_Animator == null || string.IsNullOrWhiteSpace(m_IsChoppingParameter))
@@ -551,6 +583,7 @@ public class WorkerUnit : HumanoidUnit
         }
     }
 
+    // Shows carried resource visuals and updates the Animator's carrying Bool.
     private void SetCarryingState(bool isCarrying)
     {
         if (isCarrying)
@@ -600,6 +633,7 @@ public class WorkerUnit : HumanoidUnit
         }
     }
 
+    // Displays the carried wood prefab as a child of the worker.
     private void ShowCarriedWood()
     {
         if (m_CarriedWoodVisual == null)
@@ -633,6 +667,7 @@ public class WorkerUnit : HumanoidUnit
         m_CarriedWoodVisual.SetActive(true);
     }
 
+    // Displays the configured food sprite as a child of the worker.
     private void ShowCarriedFood()
     {
         if (m_CarriedFoodSprite == null)
