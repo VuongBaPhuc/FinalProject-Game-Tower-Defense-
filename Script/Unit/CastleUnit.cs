@@ -64,6 +64,25 @@ public class CastleUnit : StructureUnit
         Debug.Log($"{name} received {amount} wood. Total stored wood: {StoredWood}.", this);
     }
 
+    // Withdraws wood only when this castle has enough stored resources.
+    public bool TrySpendWood(int amount)
+    {
+        if (amount < 0)
+        {
+            Debug.LogError($"Wood cost cannot be negative. Received {amount}.", this);
+            return false;
+        }
+
+        if (StoredWood < amount)
+        {
+            return false;
+        }
+
+        StoredWood -= amount;
+        WoodChanged?.Invoke(this);
+        return true;
+    }
+
     // Adds gathered food and notifies listeners that the total changed.
     public void DepositFood(int amount)
     {

@@ -54,6 +54,23 @@ public class BuildingProcess : MonoBehaviour
             yield break;
         }
 
+        GameManager gameManager = FindAnyObjectByType<GameManager>();
+        if (gameManager == null)
+        {
+            Debug.LogError("Cannot charge for the Tower because no GameManager exists in the scene.", this);
+            m_IsBuilding = false;
+            yield break;
+        }
+
+        if (!gameManager.TrySpendWood(action.WoodCost))
+        {
+            Debug.LogWarning(
+                $"Not enough Wood to build '{action.DisplayName}'. Required: {action.WoodCost}.",
+                builder);
+            m_IsBuilding = false;
+            yield break;
+        }
+
         builder.PlayAnimationTrigger(action.BuildTrigger);
 
         GameObject tower = Instantiate(action.TowerPrefab, position, Quaternion.identity);

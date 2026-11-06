@@ -10,11 +10,13 @@ public class BuildActionSO : UnitActionSO
     [SerializeField] private string m_BuildTrigger = "Build";
     [SerializeField] private string m_TowerBuildTrigger;
     [SerializeField, Min(0.1f)] private float m_BuildDuration = 2f;
+    [SerializeField, Min(0)] private int m_WoodCost = 25;
 
     public GameObject TowerPrefab => m_TowerPrefab;
     public string BuildTrigger => m_BuildTrigger;
     public string TowerBuildTrigger => m_TowerBuildTrigger;
     public float BuildDuration => m_BuildDuration;
+    public int WoodCost => m_WoodCost;
 
     // Checks the build configuration and asks the GameManager to begin placement.
     public override void Execute(Unit unit)

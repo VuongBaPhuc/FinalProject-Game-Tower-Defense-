@@ -30,6 +30,8 @@ public class GameManager : SingletonManager<GameManager>
     [FormerlySerializedAs("m_EnemySpawnInterval")]
     [SerializeField, Min(0.1f)] private float m_GoblinSpawnInterval = 2f;
     [SerializeField, Min(1f)] private float m_MatchDurationMinutes = 6f;
+    [Header("Sample Scene Cheats")]
+    [SerializeField, Min(1)] private int m_CheatResourceAmount = 25;
     // Input tracking state used to distinguish taps from drags.
     private Vector2 m_InitialTouchPosition;
     private PointToClick m_CurrentPointToClick;
@@ -44,6 +46,8 @@ public class GameManager : SingletonManager<GameManager>
     private int m_GoblinsDefeated;
     private float m_TimeRemaining;
     private bool m_IsTimeUp;
+    private bool m_IsTimerPaused;
+    private bool m_IsGoblinSpawningPaused;
 
     // Ensures required components are available and hides the action bar at startup.
     private void Start()
@@ -92,12 +96,15 @@ public class GameManager : SingletonManager<GameManager>
             return;
         }
 
-        m_TimeRemaining = Mathf.Max(0f, m_TimeRemaining - Time.deltaTime);
-        if (m_TimeRemaining <= 0f)
+        if (!m_IsTimerPaused)
         {
-            m_IsTimeUp = true;
-            EndGame(GameResult.Victory);
-            return;
+            m_TimeRemaining = Mathf.Max(0f, m_TimeRemaining - Time.deltaTime);
+            if (m_TimeRemaining <= 0f)
+            {
+                m_IsTimeUp = true;
+                EndGame(GameResult.Victory);
+                return;
+            }
         }
 
         bool hasTouch = Input.touchCount > 0;
@@ -112,7 +119,9 @@ public class GameManager : SingletonManager<GameManager>
 
         if (pointerDown)
         {
-            m_IsTrackingClick = !IsPointerOverUI(hasTouch ? touch.fingerId : -1);
+            m_IsTrackingClick =
+                !IsPointerOverUI(hasTouch ? touch.fingerId : -1) &&
+                !IsPointerOverCheatPanel(inputPosition);
             if (m_IsTrackingClick)
             {
                 m_InitialTouchPosition = inputPosition;
@@ -129,10 +138,16 @@ public class GameManager : SingletonManager<GameManager>
         }
     }
 
-    // Waits before the first Goblin, then spawns the rest at the configured interval.
+    // Keeps affordability indicators current after resource deposits or Tower purchases.
+    private void LateUpdate()
+    {
+        m_ActionBar?.RefreshActionAvailability(this);
+    }
+
+    // Waits before the first Goblin, then spawns the remaining Goblins at the configured interval.
     private IEnumerator SpawnGoblinWave()
     {
-        yield return new WaitForSeconds(m_InitialGoblinSpawnDelay);
+        yield return WaitForGoblinSpawnDelay(m_InitialGoblinSpawnDelay);
 
         while (m_GoblinsSpawned < m_GoblinsPerWave)
         {
@@ -141,29 +156,143 @@ public class GameManager : SingletonManager<GameManager>
                 yield break;
             }
 
-            float horizontalOffset =
-                (m_GoblinsSpawned % 2 == 0 ? -1f : 1f) *
-                Mathf.Ceil((m_GoblinsSpawned + 1) * 0.5f) *
-                1.25f;
-            Vector3 spawnPosition = m_GoblinSpawnPosition + Vector2.right * horizontalOffset;
-            GoblinUnit goblin = Instantiate(
-                m_GoblinPrefab,
-                spawnPosition,
-                Quaternion.identity).GetComponent<GoblinUnit>();
-            if (goblin == null)
+            if (!SpawnNextGoblin())
             {
-                Debug.LogError("The configured Goblin prefab has no GoblinUnit component.", m_GoblinPrefab);
                 yield break;
             }
 
-            m_WaveGoblins.Add(goblin);
-            m_GoblinsSpawned++;
-
             if (m_GoblinsSpawned < m_GoblinsPerWave)
             {
-                yield return new WaitForSeconds(m_GoblinSpawnInterval);
+                yield return WaitForGoblinSpawnDelay(m_GoblinSpawnInterval);
             }
         }
+    }
+
+    // Counts down spawn delays only while spawning is enabled.
+    private IEnumerator WaitForGoblinSpawnDelay(float delay)
+    {
+        while (delay > 0f && !m_IsGameOver)
+        {
+            if (!m_IsGoblinSpawningPaused)
+            {
+                delay -= Time.deltaTime;
+            }
+
+            yield return null;
+        }
+    }
+
+    // Spawns and registers one Goblin as part of the current wave.
+    private bool SpawnNextGoblin()
+    {
+        if (m_GoblinsSpawned >= m_GoblinsPerWave)
+        {
+            return false;
+        }
+
+        float horizontalOffset =
+            (m_GoblinsSpawned % 2 == 0 ? -1f : 1f) *
+            Mathf.Ceil((m_GoblinsSpawned + 1) * 0.5f) *
+            1.25f;
+        Vector3 spawnPosition = m_GoblinSpawnPosition + Vector2.right * horizontalOffset;
+        GameObject spawnedObject = Instantiate(m_GoblinPrefab, spawnPosition, Quaternion.identity);
+        GoblinUnit goblin = spawnedObject.GetComponent<GoblinUnit>();
+        if (goblin == null)
+        {
+            Debug.LogError("The configured Goblin prefab has no GoblinUnit component.", m_GoblinPrefab);
+            Destroy(spawnedObject);
+            return false;
+        }
+
+        m_WaveGoblins.Add(goblin);
+        m_GoblinsSpawned++;
+        return true;
+    }
+
+    // Adds cheat resources to the first friendly Castle and refreshes the HUD through its events.
+    private void AddCheatResources(bool addFood)
+    {
+        CastleUnit[] castles = FindObjectsByType<CastleUnit>();
+        foreach (CastleUnit castle in castles)
+        {
+            if (castle.Team != UnitTeam.Player)
+            {
+                continue;
+            }
+
+            if (addFood)
+            {
+                castle.DepositFood(m_CheatResourceAmount);
+            }
+            else
+            {
+                castle.DepositWood(m_CheatResourceAmount);
+            }
+
+            return;
+        }
+
+        Debug.LogError("Cannot add cheat resources because no friendly Castle exists in the scene.", this);
+    }
+
+    // Spends wood across friendly Castles only when their combined balance covers the full cost.
+    public bool TrySpendWood(int amount)
+    {
+        if (amount < 0)
+        {
+            Debug.LogError($"Wood cost cannot be negative. Received {amount}.", this);
+            return false;
+        }
+
+        int totalWood = GetAvailableWood();
+        if (totalWood < amount)
+        {
+            return false;
+        }
+
+        CastleUnit[] castles = FindObjectsByType<CastleUnit>();
+        int remainingCost = amount;
+        foreach (CastleUnit castle in castles)
+        {
+            if (castle.Team != UnitTeam.Player || remainingCost <= 0)
+            {
+                continue;
+            }
+
+            int amountToSpend = Mathf.Min(castle.StoredWood, remainingCost);
+            if (amountToSpend > 0 && !castle.TrySpendWood(amountToSpend))
+            {
+                Debug.LogError($"Could not withdraw {amountToSpend} Wood from '{castle.name}'.", castle);
+                return false;
+            }
+
+            remainingCost -= amountToSpend;
+        }
+
+        return remainingCost == 0;
+    }
+
+    // Returns the combined Wood balance of all friendly Castles.
+    private int GetAvailableWood()
+    {
+        int totalWood = 0;
+        foreach (CastleUnit castle in FindObjectsByType<CastleUnit>())
+        {
+            if (castle.Team == UnitTeam.Player)
+            {
+                totalWood += castle.StoredWood;
+            }
+        }
+
+        return totalWood;
+    }
+
+    // Checks affordability when the player starts placement and again when construction begins.
+    public bool CanAffordBuild(BuildActionSO action)
+    {
+        return action != null &&
+            action.WoodCost >= 0 &&
+            GetAvailableWood() >= action.WoodCost;
     }
 
     // Counts only Goblins belonging to this wave and wins when all three are defeated.
@@ -208,6 +337,11 @@ public class GameManager : SingletonManager<GameManager>
 
         if (!m_IsGameOver)
         {
+            DrawCheatPanel();
+        }
+
+        if (!m_IsGameOver)
+        {
             return;
         }
 
@@ -232,6 +366,68 @@ public class GameManager : SingletonManager<GameManager>
             Time.timeScale = 1f;
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }
+    }
+
+    // Draws sample-scene test buttons for resources, manual spawning, and pause controls.
+    private void DrawCheatPanel()
+    {
+        const float panelX = 12f;
+        const float panelY = 52f;
+        const float panelWidth = 190f;
+        const float buttonHeight = 24f;
+        const float spacing = 4f;
+        float panelHeight = 30f + buttonHeight * 5f + spacing * 4f;
+
+        GUI.Box(new Rect(panelX, panelY, panelWidth, panelHeight), "Test Cheats");
+        float buttonY = panelY + 25f;
+
+        if (GUI.Button(new Rect(panelX + 6f, buttonY, panelWidth - 12f, buttonHeight),
+                $"+{m_CheatResourceAmount} Wood"))
+        {
+            AddCheatResources(false);
+        }
+
+        buttonY += buttonHeight + spacing;
+        if (GUI.Button(new Rect(panelX + 6f, buttonY, panelWidth - 12f, buttonHeight),
+                $"+{m_CheatResourceAmount} Food"))
+        {
+            AddCheatResources(true);
+        }
+
+        buttonY += buttonHeight + spacing;
+        GUI.enabled = m_GoblinsSpawned < m_GoblinsPerWave;
+        if (GUI.Button(new Rect(panelX + 6f, buttonY, panelWidth - 12f, buttonHeight), "Spawn Goblin Now"))
+        {
+            SpawnNextGoblin();
+        }
+
+        GUI.enabled = true;
+        buttonY += buttonHeight + spacing;
+        if (GUI.Button(
+                new Rect(panelX + 6f, buttonY, panelWidth - 12f, buttonHeight),
+                m_IsTimerPaused ? "Resume Timer" : "Pause Timer"))
+        {
+            m_IsTimerPaused = !m_IsTimerPaused;
+        }
+
+        buttonY += buttonHeight + spacing;
+        if (GUI.Button(
+                new Rect(panelX + 6f, buttonY, panelWidth - 12f, buttonHeight),
+                m_IsGoblinSpawningPaused ? "Resume Goblin Spawns" : "Pause Goblin Spawns"))
+        {
+            m_IsGoblinSpawningPaused = !m_IsGoblinSpawningPaused;
+        }
+    }
+
+    // Excludes clicks on the OnGUI test panel from world selection and movement commands.
+    private bool IsPointerOverCheatPanel(Vector2 screenPosition)
+    {
+        Vector2 guiPosition = new(screenPosition.x, Screen.height - screenPosition.y);
+        const float panelX = 12f;
+        const float panelY = 52f;
+        const float panelWidth = 190f;
+        const float panelHeight = 30f + 24f * 5f + 4f * 4f;
+        return new Rect(panelX, panelY, panelWidth, panelHeight).Contains(guiPosition);
     }
 
     // Prevents clicks on UI controls from also selecting or moving game units.
@@ -374,6 +570,14 @@ public class GameManager : SingletonManager<GameManager>
         if (!builder.CanMove)
         {
             Debug.LogError($"Builder '{builder.name}' has no AIPawn component.", builder);
+            return;
+        }
+
+        if (!CanAffordBuild(action))
+        {
+            Debug.LogWarning(
+                $"Not enough Wood to build '{action.DisplayName}'. Required: {action.WoodCost}.",
+                action);
             return;
         }
 
