@@ -43,6 +43,20 @@ public class ActionBar : MonoBehaviour
         }
     }
 
+    // Refreshes resource-based enabled states while this action bar is visible.
+    public void RefreshActionAvailability(GameManager gameManager)
+    {
+        if (m_ActionContainer == null || !m_ActionContainer.gameObject.activeInHierarchy)
+        {
+            return;
+        }
+
+        foreach (ActionButton actionButton in m_ActionContainer.GetComponentsInChildren<ActionButton>(true))
+        {
+            actionButton.RefreshAvailability(gameManager);
+        }
+    }
+
     // Matches an action to a button using the button's display name.
     private UnitActionSO FindActionForButton(Unit unit, Button button)
     {
