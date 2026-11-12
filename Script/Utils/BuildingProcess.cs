@@ -15,9 +15,9 @@ public class BuildingProcess : MonoBehaviour
             return;
         }
 
-        if (action == null || action.TowerPrefab == null)
+        if (action == null || action.BuildingPrefab == null)
         {
-            Debug.LogError("Cannot build because the build action or Tower prefab is missing.", this);
+            Debug.LogError("Cannot build because the build action or building prefab is missing.", this);
             return;
         }
 
@@ -36,10 +36,33 @@ public class BuildingProcess : MonoBehaviour
         StartCoroutine(BuildRoutine(builder, action, position));
     }
 
-    // Moves the builder, spawns the tower, disables its colliders while building, then restores them.
+    // Delivers carried resources, moves the builder, and completes construction at the site.
     private IEnumerator BuildRoutine(Unit builder, BuildActionSO action, Vector3 position)
     {
         m_IsBuilding = true;
+
+        WorkerUnit worker = builder as WorkerUnit;
+        if (worker != null)
+        {
+            if (!worker.PrepareForBuild())
+            {
+                m_IsBuilding = false;
+                yield break;
+            }
+
+            while (builder != null && worker.HasCarriedResources)
+            {
+                yield return null;
+            }
+        }
+
+        if (builder == null)
+        {
+            Debug.LogError("Building was cancelled because the builder was destroyed.", this);
+            m_IsBuilding = false;
+            yield break;
+        }
+
         builder.MoveTo(position);
 
         while (builder != null && builder.HasPendingMove)
@@ -62,10 +85,10 @@ public class BuildingProcess : MonoBehaviour
             yield break;
         }
 
-        if (!gameManager.TrySpendWood(action.WoodCost))
+        if (!gameManager.TrySpendResource(action.CostType, action.CostAmount))
         {
             Debug.LogWarning(
-                $"Not enough Wood to build '{action.DisplayName}'. Required: {action.WoodCost}.",
+                $"Not enough {action.CostType} to build '{action.DisplayName}'. Required: {action.CostAmount}.",
                 builder);
             m_IsBuilding = false;
             yield break;
@@ -73,19 +96,15 @@ public class BuildingProcess : MonoBehaviour
 
         builder.PlayAnimationTrigger(action.BuildTrigger);
 
-        GameObject tower = Instantiate(action.TowerPrefab, position, Quaternion.identity);
-        Animator towerAnimator = tower.GetComponent<Animator>();
-        if (towerAnimator == null)
+        GameObject building = Instantiate(action.BuildingPrefab, position, Quaternion.identity);
+        Animator buildingAnimator = building.GetComponent<Animator>();
+        if (buildingAnimator != null && !string.IsNullOrWhiteSpace(action.BuildingBuildTrigger))
         {
-            Debug.LogError($"Tower prefab '{tower.name}' has no Animator component.", tower);
-        }
-        else if (!string.IsNullOrWhiteSpace(action.TowerBuildTrigger))
-        {
-            PlayTowerBuildAnimation(towerAnimator, action.TowerBuildTrigger, tower);
+            PlayBuildAnimation(buildingAnimator, action.BuildingBuildTrigger, building);
         }
 
         // Save collider states so the prefab's original enabled settings can be restored.
-        Collider2D[] colliders = tower.GetComponentsInChildren<Collider2D>(true);
+        Collider2D[] colliders = building.GetComponentsInChildren<Collider2D>(true);
         bool[] colliderStates = new bool[colliders.Length];
         for (int i = 0; i < colliders.Length; i++)
         {
@@ -107,8 +126,8 @@ public class BuildingProcess : MonoBehaviour
         m_IsBuilding = false;
     }
 
-    // Plays the tower's build animation when the configured Trigger exists.
-    private void PlayTowerBuildAnimation(Animator animator, string triggerName, GameObject tower)
+    // Plays the building animation when the configured Trigger exists.
+    private void PlayBuildAnimation(Animator animator, string triggerName, GameObject building)
     {
         foreach (AnimatorControllerParameter parameter in animator.parameters)
         {
@@ -121,8 +140,8 @@ public class BuildingProcess : MonoBehaviour
         }
 
         Debug.LogError(
-            $"Tower Animator on '{tower.name}' has no Trigger parameter named '{triggerName}'. " +
-            "Leave Tower Build Trigger empty if its build animation plays automatically on spawn.",
-            tower);
+            $"Building Animator on '{building.name}' has no Trigger parameter named '{triggerName}'. " +
+            "Leave Building Build Trigger empty if its build animation plays automatically on spawn.",
+            building);
     }
 }

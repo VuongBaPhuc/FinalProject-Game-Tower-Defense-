@@ -178,7 +178,7 @@ public class HumanoidUnit : Unit
     }
 
     // Draws automatic attack radii in the Scene view while this unit is selected.
-    private void OnDrawGizmosSelected()
+    protected virtual void OnDrawGizmosSelected()
     {
         if (!m_AutoAttackEnabled)
         {

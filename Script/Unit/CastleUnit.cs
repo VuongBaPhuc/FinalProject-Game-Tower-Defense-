@@ -83,6 +83,25 @@ public class CastleUnit : StructureUnit
         return true;
     }
 
+    // Withdraws food only when this Castle has enough stored resources.
+    public bool TrySpendFood(int amount)
+    {
+        if (amount < 0)
+        {
+            Debug.LogError($"Food cost cannot be negative. Received {amount}.", this);
+            return false;
+        }
+
+        if (StoredFood < amount)
+        {
+            return false;
+        }
+
+        StoredFood -= amount;
+        FoodChanged?.Invoke(this);
+        return true;
+    }
+
     // Adds gathered food and notifies listeners that the total changed.
     public void DepositFood(int amount)
     {

@@ -30,6 +30,14 @@ public class GameManager : SingletonManager<GameManager>
     [FormerlySerializedAs("m_EnemySpawnInterval")]
     [SerializeField, Min(0.1f)] private float m_GoblinSpawnInterval = 2f;
     [SerializeField, Min(1f)] private float m_MatchDurationMinutes = 6f;
+    [Header("Resource Respawning")]
+    [SerializeField] private TreeResourceNode m_TreePrefab;
+    [SerializeField] private SheepResourceNode m_SheepPrefab;
+    [SerializeField] private Vector2 m_ResourceSpawnCenter = new(-2f, -1f);
+    [SerializeField] private Vector2 m_ResourceSpawnSize = new(12f, 6f);
+    [SerializeField, Min(0)] private int m_MaxTrees = 5;
+    [SerializeField, Min(0)] private int m_MaxSheep = 5;
+    [SerializeField, Min(1f)] private float m_ResourceRespawnInterval = 30f;
     [Header("Sample Scene Cheats")]
     [SerializeField, Min(1)] private int m_CheatResourceAmount = 25;
     // Input tracking state used to distinguish taps from drags.
@@ -85,6 +93,15 @@ public class GameManager : SingletonManager<GameManager>
         else
         {
             StartCoroutine(SpawnGoblinWave());
+        }
+
+        if (m_TreePrefab == null || m_SheepPrefab == null)
+        {
+            Debug.LogError("GameManager requires Tree and Sheep prefabs to enable resource respawning.", this);
+        }
+        else
+        {
+            StartCoroutine(RespawnResources());
         }
     }
 
@@ -235,17 +252,21 @@ public class GameManager : SingletonManager<GameManager>
         Debug.LogError("Cannot add cheat resources because no friendly Castle exists in the scene.", this);
     }
 
-    // Spends wood across friendly Castles only when their combined balance covers the full cost.
+    // Spends a resource across friendly Castles only when their combined balance covers the full cost.
     public bool TrySpendWood(int amount)
+    {
+        return TrySpendResource(ResourceCostType.Wood, amount);
+    }
+
+    public bool TrySpendResource(ResourceCostType resourceType, int amount)
     {
         if (amount < 0)
         {
-            Debug.LogError($"Wood cost cannot be negative. Received {amount}.", this);
+            Debug.LogError($"{resourceType} cost cannot be negative. Received {amount}.", this);
             return false;
         }
 
-        int totalWood = GetAvailableWood();
-        if (totalWood < amount)
+        if (GetAvailableResource(resourceType) < amount)
         {
             return false;
         }
@@ -259,11 +280,18 @@ public class GameManager : SingletonManager<GameManager>
                 continue;
             }
 
-            int amountToSpend = Mathf.Min(castle.StoredWood, remainingCost);
-            if (amountToSpend > 0 && !castle.TrySpendWood(amountToSpend))
+            int storedAmount = GetStoredResource(castle, resourceType);
+            int amountToSpend = Mathf.Min(storedAmount, remainingCost);
+            if (amountToSpend > 0)
             {
-                Debug.LogError($"Could not withdraw {amountToSpend} Wood from '{castle.name}'.", castle);
-                return false;
+                bool spent = resourceType == ResourceCostType.Wood
+                    ? castle.TrySpendWood(amountToSpend)
+                    : castle.TrySpendFood(amountToSpend);
+                if (!spent)
+                {
+                    Debug.LogError($"Could not withdraw {amountToSpend} {resourceType} from '{castle.name}'.", castle);
+                    return false;
+                }
             }
 
             remainingCost -= amountToSpend;
@@ -272,27 +300,191 @@ public class GameManager : SingletonManager<GameManager>
         return remainingCost == 0;
     }
 
-    // Returns the combined Wood balance of all friendly Castles.
-    private int GetAvailableWood()
+    // Checks whether friendly Castles can cover the requested resource cost.
+    public bool CanAfford(ResourceCostType resourceType, int amount, Unit unit = null)
     {
-        int totalWood = 0;
+        if (amount < 0)
+        {
+            return false;
+        }
+
+        int available = GetAvailableResource(resourceType);
+        if (resourceType == ResourceCostType.Wood &&
+            unit is WorkerUnit worker &&
+            worker.Team == UnitTeam.Player)
+        {
+            available += worker.CarriedWood;
+        }
+
+        return available >= amount;
+    }
+
+    // Compatibility helper used by existing Tower placement flows.
+    public bool CanAffordBuild(BuildActionSO action, Unit builder = null)
+    {
+        return action != null && CanAfford(action.CostType, action.CostAmount, builder);
+    }
+
+    private int GetAvailableResource(ResourceCostType resourceType)
+    {
+        int total = 0;
         foreach (CastleUnit castle in FindObjectsByType<CastleUnit>())
         {
             if (castle.Team == UnitTeam.Player)
             {
-                totalWood += castle.StoredWood;
+                total += GetStoredResource(castle, resourceType);
             }
         }
 
-        return totalWood;
+        return total;
     }
 
-    // Checks affordability when the player starts placement and again when construction begins.
-    public bool CanAffordBuild(BuildActionSO action)
+    private int GetStoredResource(CastleUnit castle, ResourceCostType resourceType)
     {
-        return action != null &&
-            action.WoodCost >= 0 &&
-            GetAvailableWood() >= action.WoodCost;
+        return resourceType == ResourceCostType.Wood ? castle.StoredWood : castle.StoredFood;
+    }
+
+    // Creates the unit beside its House only after validating position and Food cost.
+    public bool TrySpawnUnit(HouseUnit house, SpawnUnitActionSO action)
+    {
+        if (house == null || action == null || action.UnitPrefab == null ||
+            action.UnitPrefab.GetComponent<Unit>() == null)
+        {
+            Debug.LogError("Cannot train a unit without a valid House and a prefab that has a Unit component.", this);
+            return false;
+        }
+
+        if (house.Team != UnitTeam.Player)
+        {
+            Debug.LogError("Only a player House can train units.", house);
+            return false;
+        }
+
+        if (!CanAfford(action.CostType, action.CostAmount))
+        {
+            Debug.LogWarning(
+                $"Not enough {action.CostType} to train '{action.UnitPrefab.name}'. Required: {action.CostAmount}.",
+                house);
+            return false;
+        }
+
+        if (!TryFindUnitSpawnPosition(house, out Vector3 spawnPosition))
+        {
+            Debug.LogWarning($"No clear space is available near '{house.name}' to train a unit.", house);
+            return false;
+        }
+
+        if (!TrySpendResource(action.CostType, action.CostAmount))
+        {
+            return false;
+        }
+
+        Instantiate(action.UnitPrefab, spawnPosition, Quaternion.identity);
+        return true;
+    }
+
+    private bool TryFindUnitSpawnPosition(HouseUnit house, out Vector3 spawnPosition)
+    {
+        const float spawnRadius = 2.5f;
+        const float checkRadius = 0.4f;
+        for (int i = 0; i < 8; i++)
+        {
+            float angle = i * Mathf.PI / 4f;
+            Vector2 offset = new(Mathf.Cos(angle), Mathf.Sin(angle));
+            Vector2 candidate = (Vector2)house.transform.position + offset * spawnRadius;
+            bool blocked = false;
+
+            foreach (Collider2D collider in Physics2D.OverlapCircleAll(candidate, checkRadius))
+            {
+                if (collider.isTrigger)
+                {
+                    continue;
+                }
+
+                HouseUnit blockingHouse = collider.GetComponentInParent<HouseUnit>();
+                if (blockingHouse == house)
+                {
+                    continue;
+                }
+
+                if (collider.GetComponentInParent<Unit>() != null ||
+                    collider.GetComponentInParent<TreeResourceNode>() != null ||
+                    collider.GetComponentInParent<SheepResourceNode>() != null)
+                {
+                    blocked = true;
+                    break;
+                }
+            }
+
+            if (!blocked)
+            {
+                spawnPosition = new Vector3(candidate.x, candidate.y, 0f);
+                return true;
+            }
+        }
+
+        spawnPosition = default;
+        return false;
+    }
+
+    private IEnumerator RespawnResources()
+    {
+        while (!m_IsGameOver)
+        {
+            yield return new WaitForSeconds(m_ResourceRespawnInterval);
+            if (m_IsGameOver)
+            {
+                yield break;
+            }
+
+            TrySpawnMissingResource(m_TreePrefab, m_MaxTrees);
+            TrySpawnMissingResource(m_SheepPrefab, m_MaxSheep);
+        }
+    }
+
+    private void TrySpawnMissingResource<T>(T prefab, int maximumCount) where T : Component
+    {
+        if (prefab == null || maximumCount <= 0 || FindObjectsByType<T>().Length >= maximumCount)
+        {
+            return;
+        }
+
+        Vector2 areaSize = new(
+            Mathf.Max(0f, m_ResourceSpawnSize.x),
+            Mathf.Max(0f, m_ResourceSpawnSize.y));
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            Vector2 candidate = m_ResourceSpawnCenter + new Vector2(
+                Random.Range(-areaSize.x * 0.5f, areaSize.x * 0.5f),
+                Random.Range(-areaSize.y * 0.5f, areaSize.y * 0.5f));
+            bool occupied = false;
+
+            foreach (Collider2D collider in Physics2D.OverlapCircleAll(candidate, 0.6f))
+            {
+                if (collider.isTrigger)
+                {
+                    continue;
+                }
+
+                if (collider.GetComponentInParent<Unit>() != null ||
+                    collider.GetComponentInParent<TreeResourceNode>() != null ||
+                    collider.GetComponentInParent<SheepResourceNode>() != null)
+                {
+                    occupied = true;
+                    break;
+                }
+            }
+
+            if (!occupied)
+            {
+                Instantiate(prefab, new Vector3(candidate.x, candidate.y, 0f), Quaternion.identity);
+                return;
+            }
+        }
+
+        Debug.LogWarning(
+            $"Could not find a clear position to respawn {typeof(T).Name} in the configured resource area.",
+            this);
     }
 
     // Counts only Goblins belonging to this wave and wins when all three are defeated.
@@ -385,6 +577,7 @@ public class GameManager : SingletonManager<GameManager>
                 $"+{m_CheatResourceAmount} Wood"))
         {
             AddCheatResources(false);
+            return;
         }
 
         buttonY += buttonHeight + spacing;
@@ -392,6 +585,7 @@ public class GameManager : SingletonManager<GameManager>
                 $"+{m_CheatResourceAmount} Food"))
         {
             AddCheatResources(true);
+            return;
         }
 
         buttonY += buttonHeight + spacing;
@@ -399,6 +593,8 @@ public class GameManager : SingletonManager<GameManager>
         if (GUI.Button(new Rect(panelX + 6f, buttonY, panelWidth - 12f, buttonHeight), "Spawn Goblin Now"))
         {
             SpawnNextGoblin();
+            GUI.enabled = true;
+            return;
         }
 
         GUI.enabled = true;
@@ -408,6 +604,7 @@ public class GameManager : SingletonManager<GameManager>
                 m_IsTimerPaused ? "Resume Timer" : "Pause Timer"))
         {
             m_IsTimerPaused = !m_IsTimerPaused;
+            return;
         }
 
         buttonY += buttonHeight + spacing;
@@ -416,6 +613,7 @@ public class GameManager : SingletonManager<GameManager>
                 m_IsGoblinSpawningPaused ? "Resume Goblin Spawns" : "Pause Goblin Spawns"))
         {
             m_IsGoblinSpawningPaused = !m_IsGoblinSpawningPaused;
+            return;
         }
     }
 
@@ -460,6 +658,15 @@ public class GameManager : SingletonManager<GameManager>
 
             Unit builder = m_BuildingUnit;
             BuildActionSO action = m_PendingBuildAction;
+            if (builder != null &&
+                Vector2.Distance(builder.transform.position, worldPoint) > action.BuildRange)
+            {
+                Debug.LogWarning(
+                    $"Build location must be within {action.BuildRange:0.#} units of '{builder.name}'.",
+                    builder);
+                return;
+            }
+
             CancelBuildPlacement();
 
             if (m_BuildingProcess == null)
@@ -482,7 +689,6 @@ public class GameManager : SingletonManager<GameManager>
         }
         else if (HasClickedOnUnit(colliders, out var unit))
         {
-            CancelActiveGathering();
             ActiveUnit = unit;
             if (m_ActionBar != null)
             {
@@ -494,6 +700,11 @@ public class GameManager : SingletonManager<GameManager>
         {
             worker.StartGathering(resourceNode);
         }
+        else if (ActiveUnit is WorkerUnit movingWorker)
+        {
+            movingWorker.MoveAfterDeliveringResources(worldPoint);
+            ShowPointToClick(worldPoint);
+        }
         else if (ActiveUnit != null)
         {
             if (ActiveUnit is HumanoidUnit humanoid)
@@ -501,7 +712,6 @@ public class GameManager : SingletonManager<GameManager>
                 humanoid.CancelAutoAttack();
             }
 
-            CancelActiveGathering();
             ActiveUnit.MoveTo(worldPoint);
             ShowPointToClick(worldPoint);
         }
@@ -549,15 +759,6 @@ public class GameManager : SingletonManager<GameManager>
         return false;
     }
 
-    // Cancels a worker's current gathering job when the player changes commands.
-    private void CancelActiveGathering()
-    {
-        if (ActiveUnit is WorkerUnit worker)
-        {
-            worker.CancelGathering();
-        }
-    }
-
     // Stores a valid builder and action while waiting for the placement click.
     public void BeginBuildPlacement(Unit builder, BuildActionSO action)
     {
@@ -573,7 +774,7 @@ public class GameManager : SingletonManager<GameManager>
             return;
         }
 
-        if (!CanAffordBuild(action))
+        if (!CanAffordBuild(action, builder))
         {
             Debug.LogWarning(
                 $"Not enough Wood to build '{action.DisplayName}'. Required: {action.WoodCost}.",
