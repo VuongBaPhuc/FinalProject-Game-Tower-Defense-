@@ -33,7 +33,7 @@ public abstract class Unit : MonoBehaviour
     public float MaxHealth => m_MaxHealth;
     // True while the movement component has an active destination.
     public bool HasPendingMove => m_AiPawn != null && m_AiPawn.Destination.HasValue;
-    public bool CanMove => m_AiPawn != null;
+    public virtual bool CanMove => m_AiPawn != null;
 
     protected Animator m_Animator;
 
@@ -55,7 +55,7 @@ public abstract class Unit : MonoBehaviour
     // Sends a movement request when this unit has an AIPawn component.
     public void MoveTo(Vector3 destination)
     {
-        if (m_AiPawn != null)
+        if (CanMove && m_AiPawn != null)
         {
             m_AiPawn.SetDestination(destination);
         }

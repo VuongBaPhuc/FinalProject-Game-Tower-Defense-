@@ -152,8 +152,9 @@ public class GoblinUnit : HumanoidUnit
     }
 
     // Shows detection and attack ranges in the Scene view when this enemy is selected.
-    private void OnDrawGizmosSelected()
+    protected override void OnDrawGizmosSelected()
     {
+        base.OnDrawGizmosSelected();
         Gizmos.color = Color.blue;
         Gizmos.DrawWireSphere(transform.position, m_DetectionRadius);
         Gizmos.color = Color.red;

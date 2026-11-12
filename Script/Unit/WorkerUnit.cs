@@ -39,6 +39,8 @@ public class WorkerUnit : HumanoidUnit
     private int m_CarriedWood;
     private int m_CarriedFood;
     private bool m_IsReturningToCastle;
+    private bool m_HasQueuedMove;
+    private Vector3 m_QueuedMoveDestination;
     // Flags prevent repeated error logs when required scene or Animator setup is missing.
     private bool m_ReportedMissingCastle;
     private bool m_ReportedMissingGatherTrigger;
@@ -60,6 +62,46 @@ public class WorkerUnit : HumanoidUnit
     public int Wood => m_CarriedWood;
     public int CarriedWood => m_CarriedWood;
     public int CarriedFood => m_CarriedFood;
+    public bool HasCarriedResources => m_CarriedWood > 0 || m_CarriedFood > 0;
+
+    // Stops the current gathering order and returns any carried resources before construction.
+    public bool PrepareForBuild()
+    {
+        StopCurrentWork();
+        m_HasQueuedMove = false;
+
+        if (!HasCarriedResources)
+        {
+            m_ReturnTarget = null;
+            m_IsReturningToCastle = false;
+            SetCarryingState(false);
+            GetComponent<AIPawn>()?.StopMoving();
+            return true;
+        }
+
+        StartReturningToCastle();
+        return m_ReturnTarget != null;
+    }
+
+    // Queues a manual move until all carried resources have been delivered.
+    public void MoveAfterDeliveringResources(Vector3 destination)
+    {
+        StopCurrentWork();
+        if (HasCarriedResources)
+        {
+            m_HasQueuedMove = true;
+            m_QueuedMoveDestination = destination;
+            StartReturningToCastle();
+            return;
+        }
+
+        m_HasQueuedMove = false;
+        m_ReturnTarget = null;
+        m_IsReturningToCastle = false;
+        SetCarryingState(false);
+        GetComponent<AIPawn>()?.StopMoving();
+        MoveTo(destination);
+    }
 
     // Runs shared humanoid logic before advancing the active gathering job.
     protected override void Update()
@@ -93,13 +135,14 @@ public class WorkerUnit : HumanoidUnit
         CancelAutoAttack();
         StopChopping();
         SetFoodGatherAnimation(false);
+        m_HasQueuedMove = false;
         m_GatherTarget = resourceNode;
         m_FoodGatherTarget = null;
         m_ReturnTarget = null;
         m_IsReturningToCastle = false;
         m_NextChopTime = 0f;
         SetCarryingState(false);
-        if (m_CarriedWood + m_CarriedFood >= m_CarryCapacity || m_CarriedFood > 0)
+        if (HasCarriedResources)
         {
             StartReturningToCastle();
         }
@@ -134,6 +177,7 @@ public class WorkerUnit : HumanoidUnit
         CancelAutoAttack();
         StopChopping();
         SetFoodGatherAnimation(true);
+        m_HasQueuedMove = false;
         m_GatherTarget = null;
         m_FoodGatherTarget = sheep;
         sheep.SetBeingGathered(true);
@@ -142,7 +186,7 @@ public class WorkerUnit : HumanoidUnit
         m_NextChopTime = 0f;
         SetCarryingState(false);
 
-        if (m_CarriedWood + m_CarriedFood >= m_CarryCapacity || m_CarriedWood > 0)
+        if (HasCarriedResources)
         {
             StartReturningToCastle();
         }
@@ -152,18 +196,32 @@ public class WorkerUnit : HumanoidUnit
         }
     }
 
-    // Cancels gathering, clears targets, restores the normal Animator, and stops movement.
+    // Stops gathering and returns any carried resources before ending the current order.
     public void CancelGathering()
     {
-        m_FoodGatherTarget?.SetBeingGathered(false);
-        m_GatherTarget = null;
-        m_FoodGatherTarget = null;
+        StopCurrentWork();
+        m_HasQueuedMove = false;
+        if (HasCarriedResources)
+        {
+            StartReturningToCastle();
+            return;
+        }
+
         m_ReturnTarget = null;
         m_IsReturningToCastle = false;
+        SetCarryingState(false);
+        GetComponent<AIPawn>()?.StopMoving();
+    }
+
+    private void StopCurrentWork()
+    {
+        m_GatherTarget = null;
+        m_FoodGatherTarget?.SetBeingGathered(false);
+        m_FoodGatherTarget = null;
         m_NextChopTime = 0f;
         SetFoodGatherAnimation(false);
         StopChopping();
-        GetComponent<AIPawn>()?.StopMoving();
+        CancelAutoAttack();
     }
 
     // Chooses whether to harvest wood, harvest food, or deliver carried resources.
@@ -325,6 +383,7 @@ public class WorkerUnit : HumanoidUnit
         m_FoodGatherTarget = null;
         m_NextChopTime = 0f;
         StopChopping();
+        SetFoodGatherAnimation(false);
         if (m_CarriedWood + m_CarriedFood <= 0)
         {
             m_GatherTarget = null;
@@ -394,6 +453,14 @@ public class WorkerUnit : HumanoidUnit
         m_IsReturningToCastle = false;
         m_ReportedMissingCastle = false;
 
+        if (m_HasQueuedMove)
+        {
+            Vector3 destination = m_QueuedMoveDestination;
+            m_HasQueuedMove = false;
+            MoveTo(destination);
+            return;
+        }
+
         if ((m_GatherTarget == null || !m_GatherTarget.HasResources) &&
             (m_FoodGatherTarget == null || !m_FoodGatherTarget.IsAlive))
         {
@@ -405,6 +472,7 @@ public class WorkerUnit : HumanoidUnit
         Vector3 nextTarget = m_GatherTarget != null
             ? m_GatherTarget.transform.position
             : m_FoodGatherTarget.transform.position;
+        SetFoodGatherAnimation(m_FoodGatherTarget != null);
         MoveTo(nextTarget);
     }
 
@@ -580,6 +648,22 @@ public class WorkerUnit : HumanoidUnit
                 $"Worker '{name}' needs a Bool Animator parameter named '{m_IsChoppingParameter}' to control the chopping state.",
                 this);
             m_ReportedMissingChoppingParameter = true;
+        }
+    }
+
+    // Draws the configured build range alongside any combat ranges in the Scene view.
+    protected override void OnDrawGizmosSelected()
+    {
+        base.OnDrawGizmosSelected();
+
+        foreach (UnitActionSO action in Actions)
+        {
+            if (action is BuildActionSO buildAction)
+            {
+                Gizmos.color = Color.green;
+                Gizmos.DrawWireSphere(transform.position, buildAction.BuildRange);
+                break;
+            }
         }
     }
 

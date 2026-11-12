@@ -23,16 +23,25 @@ public class ActionBar : MonoBehaviour
         }
 
         m_ActionContainer.gameObject.SetActive(unit != null && unit.Actions.Count > 0);
-
-        foreach (Button button in buttons)
+        if (unit != null && unit.Actions.Count > buttons.Length)
         {
+            Debug.LogWarning(
+                $"ActionBar has {buttons.Length} slots, but '{unit.name}' has {unit.Actions.Count} actions.",
+                this);
+        }
+
+        for (int i = 0; i < buttons.Length; i++)
+        {
+            Button button = buttons[i];
             ActionButton actionButton = button.GetComponent<ActionButton>();
             if (actionButton == null)
             {
                 actionButton = button.gameObject.AddComponent<ActionButton>();
             }
 
-            UnitActionSO action = FindActionForButton(unit, button);
+            UnitActionSO action = unit != null && i < unit.Actions.Count
+                ? unit.Actions[i]
+                : null;
             if (action == null)
             {
                 actionButton.Hide();
@@ -57,33 +66,4 @@ public class ActionBar : MonoBehaviour
         }
     }
 
-    // Matches an action to a button using the button's display name.
-    private UnitActionSO FindActionForButton(Unit unit, Button button)
-    {
-        if (unit == null)
-        {
-            return null;
-        }
-
-        string buttonName = button.name;
-        int openParenthesis = buttonName.LastIndexOf('(');
-        int closeParenthesis = buttonName.LastIndexOf(')');
-        if (openParenthesis >= 0 && closeParenthesis > openParenthesis)
-        {
-            buttonName = buttonName.Substring(
-                openParenthesis + 1,
-                closeParenthesis - openParenthesis - 1);
-        }
-
-        foreach (UnitActionSO action in unit.Actions)
-        {
-            if (action != null &&
-                string.Equals(action.DisplayName, buttonName, System.StringComparison.OrdinalIgnoreCase))
-            {
-                return action;
-            }
-        }
-
-        return null;
-    }
 }
